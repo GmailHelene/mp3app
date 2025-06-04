@@ -1,12 +1,11 @@
-
-from flask import Flask, request, render_template, send_from_directory, send_file
+from flask import Flask, request, render_template, send_from_directory
 import yt_dlp
 import os
 import zipfile
 
 app = Flask(__name__)
-DOWNLOAD_FOLDER = "downloads"
 ZIP_NAME = "alle_sanger.zip"
+DOWNLOAD_FOLDER = os.path.join(os.getcwd(), "downloads")
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 @app.route("/", methods=["GET", "POST"])
@@ -18,14 +17,19 @@ def index():
         song_titles = [line.strip() for line in input_text.strip().split("\n") if line.strip()]
         for title in song_titles:
             try:
+                safe_title = title.replace(" ", "_").replace("/", "_")
+                output_path = os.path.join(DOWNLOAD_FOLDER, f"{safe_title}.%(ext)s")
                 ydl_opts = {
                     "format": "bestaudio/best",
-                    "outtmpl": f"{DOWNLOAD_FOLDER}/%(title)s.%(ext)s",
+                    "outtmpl": output_path,
                     "postprocessors": [{
                         "key": "FFmpegExtractAudio",
                         "preferredcodec": "mp3",
                         "preferredquality": "192",
                     }],
+                    "postprocessor_args": ["-ar", "44100"],
+                    "prefer_ffmpeg": True,
+                    "ffmpeg_location": "ffmpeg"
                 }
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([f"ytsearch1:{title}"])
@@ -33,15 +37,14 @@ def index():
             except Exception as e:
                 status += f"❌ {title} – Feil: {str(e)}<br>"
 
-        files = os.listdir(DOWNLOAD_FOLDER)
+        files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith(".mp3")]
         if files:
             zip_path = os.path.join(DOWNLOAD_FOLDER, ZIP_NAME)
             with zipfile.ZipFile(zip_path, "w") as zipf:
                 for f in files:
-                    if f != ZIP_NAME:
-                        zipf.write(os.path.join(DOWNLOAD_FOLDER, f), arcname=f)
+                    zipf.write(os.path.join(DOWNLOAD_FOLDER, f), arcname=f)
 
-    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f != ZIP_NAME]
+    files = [f for f in os.listdir(DOWNLOAD_FOLDER) if f.endswith(".mp3")]
     return render_template("index.html", status=status, files=files)
 
 @app.route("/downloads/<filename>")
@@ -52,8 +55,5 @@ def download_file(filename):
 def download_zip():
     return send_from_directory(DOWNLOAD_FOLDER, ZIP_NAME, as_attachment=True)
 
-import os
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=5000)
